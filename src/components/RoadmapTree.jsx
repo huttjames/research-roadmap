@@ -1,35 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const WIDTH = 9000;
-const HEIGHT = 7000;
-const CENTER_X = WIDTH / 2;
-const CENTER_Y = HEIGHT / 2;
-const INITIAL_ZOOM = 2.05;
-const CATEGORY_RADIUS = 1050;
-const SUBCATEGORY_RADIUS = 1900;
-const QUESTION_RADIUS = 3000;
+const BASE_WIDTH = 3900;
+const MIN_HEIGHT = 2400;
+const ROOT_X = 260;
+const CATEGORY_X = 900;
+const SUBCATEGORY_X = 1720;
+const QUESTION_X = 2920;
+const PADDING_Y = 220;
+const CATEGORY_GAP = 280;
+const SUBCATEGORY_GAP = 150;
+const QUESTION_GAP = 260;
+const INITIAL_ZOOM = 1.8;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function polarToCartesian(angle, radius) {
-  const adjustedAngle = angle - Math.PI / 2;
-  return {
-    x: Math.cos(adjustedAngle) * radius + CENTER_X,
-    y: Math.sin(adjustedAngle) * radius + CENTER_Y,
-  };
-}
-
 function linkPath(link) {
   const source = link.source.point;
   const target = link.target.point;
-  const middle = {
-    x: (source.x + target.x) / 2,
-    y: (source.y + target.y) / 2,
-  };
+  const elbowX = source.x + (target.x - source.x) * 0.54;
 
-  return `M${source.x},${source.y} Q${middle.x},${middle.y} ${target.x},${target.y}`;
+  return `M${source.x},${source.y} H${elbowX} V${target.y} H${target.x}`;
 }
 
 function nodeClass(node) {
@@ -37,96 +29,98 @@ function nodeClass(node) {
 }
 
 function nodeBox(node) {
-  if (node.data.type === "root") return { width: 360, height: 118 };
-  if (node.data.type === "category") return { width: 620, height: 220 };
-  if (node.data.type === "subcategory") return { width: 420, height: 140 };
-  return { width: 520, height: 176 };
-}
-
-function countLeaves(node) {
-  if (!node.children?.length) return node.type === "question" ? 1 : 0;
-  return node.children.reduce((sum, child) => sum + countLeaves(child), 0);
+  if (node.data.type === "root") return { width: 390, height: 132 };
+  if (node.data.type === "category") return { width: 700, height: 250 };
+  if (node.data.type === "subcategory") return { width: 520, height: 170 };
+  return { width: 620, height: 190 };
 }
 
 function createRoadmapLayout(data) {
-  const root = {
-    data,
-    point: { x: CENTER_X, y: CENTER_Y },
-  };
-  const nodes = [root];
+  const root = { data, point: { x: ROOT_X, y: PADDING_Y } };
+  const categoryNodes = [];
+  const subcategoryNodes = [];
+  const questionNodes = [];
   const links = [];
-  const nodePoints = new Map([[data.id, root.point]]);
+  const nodePoints = new Map();
   const categories = data.children || [];
-  const categoryWeights = categories.map((category) =>
-    Math.max(
-      4,
-      (category.children || []).reduce((sum, subcategory) => sum + Math.max(2.4, countLeaves(subcategory)), 0),
-    ),
-  );
-  const totalWeight = categoryWeights.reduce((sum, weight) => sum + weight, 0) || 1;
-  let angleCursor = 0;
+  let cursorY = PADDING_Y;
 
-  categories.forEach((category, categoryIndex) => {
-    const categorySpan = (Math.PI * 2 * categoryWeights[categoryIndex]) / totalWeight;
-    const categoryStart = angleCursor;
-    const categoryEnd = angleCursor + categorySpan;
-    const categoryAngle = (categoryStart + categoryEnd) / 2;
-    const categoryNode = {
-      data: category,
-      point: polarToCartesian(categoryAngle, CATEGORY_RADIUS),
-    };
-    nodes.push(categoryNode);
-    links.push({ source: root, target: categoryNode });
-    nodePoints.set(category.id, categoryNode.point);
-
+  categories.forEach((category) => {
+    const categoryStartY = cursorY;
     const subcategories = category.children || [];
-    const subcategoryWeights = subcategories.map((subcategory) => Math.max(2.4, countLeaves(subcategory)));
-    const subcategoryTotal = subcategoryWeights.reduce((sum, weight) => sum + weight, 0) || 1;
-    const categoryPadding = Math.min(0.12, categorySpan * 0.08);
-    let subcategoryCursor = categoryStart + categoryPadding;
-    const availableSpan = Math.max(0.1, categorySpan - categoryPadding * 2);
+    const currentSubcategoryNodes = [];
 
-    subcategories.forEach((subcategory, subcategoryIndex) => {
-      const subcategorySpan = (availableSpan * subcategoryWeights[subcategoryIndex]) / subcategoryTotal;
-      const subcategoryStart = subcategoryCursor;
-      const subcategoryEnd = subcategoryCursor + subcategorySpan;
-      const subcategoryAngle = (subcategoryStart + subcategoryEnd) / 2;
-      const subcategoryNode = {
-        data: subcategory,
-        point: polarToCartesian(subcategoryAngle, SUBCATEGORY_RADIUS),
-      };
-      nodes.push(subcategoryNode);
-      links.push({ source: categoryNode, target: subcategoryNode });
-      nodePoints.set(subcategory.id, subcategoryNode.point);
-
+    subcategories.forEach((subcategory) => {
+      const subcategoryStartY = cursorY;
       const questions = subcategory.children || [];
-      const questionPadding = Math.min(0.08, subcategorySpan * 0.16);
-      const questionStart = subcategoryStart + questionPadding;
-      const questionEnd = subcategoryEnd - questionPadding;
-      const questionSpan = Math.max(0, questionEnd - questionStart);
+      const currentQuestionNodes = [];
 
       questions.forEach((question, questionIndex) => {
-        const questionAngle =
-          questions.length === 1
-            ? subcategoryAngle
-            : questionStart + (questionSpan * questionIndex) / (questions.length - 1);
-        const questionRadius = QUESTION_RADIUS + (questionIndex % 2) * 240;
         const questionNode = {
           data: question,
-          point: polarToCartesian(questionAngle, questionRadius),
+          point: { x: QUESTION_X, y: cursorY + questionIndex * QUESTION_GAP },
         };
-        nodes.push(questionNode);
-        links.push({ source: subcategoryNode, target: questionNode });
+        questionNodes.push(questionNode);
+        currentQuestionNodes.push(questionNode);
         nodePoints.set(question.id, questionNode.point);
       });
 
-      subcategoryCursor += subcategorySpan;
+      const firstQuestion = currentQuestionNodes[0] || { point: { y: subcategoryStartY } };
+      const lastQuestion = currentQuestionNodes[currentQuestionNodes.length - 1] || firstQuestion;
+      const subcategoryNode = {
+        data: subcategory,
+        point: { x: SUBCATEGORY_X, y: (firstQuestion.point.y + lastQuestion.point.y) / 2 },
+      };
+      subcategoryNodes.push(subcategoryNode);
+      currentSubcategoryNodes.push(subcategoryNode);
+      nodePoints.set(subcategory.id, subcategoryNode.point);
+
+      currentQuestionNodes.forEach((questionNode) => {
+        links.push({ source: subcategoryNode, target: questionNode });
+      });
+
+      cursorY = Math.max(subcategoryStartY + QUESTION_GAP, lastQuestion.point.y + QUESTION_GAP + SUBCATEGORY_GAP);
     });
 
-    angleCursor = categoryEnd;
+    const firstSubcategory = currentSubcategoryNodes[0];
+    const lastSubcategory = currentSubcategoryNodes[currentSubcategoryNodes.length - 1];
+    const fallbackCategoryY = categoryStartY + CATEGORY_GAP / 2;
+    const categoryNode = {
+      data: category,
+      point: {
+        x: CATEGORY_X,
+        y: firstSubcategory && lastSubcategory ? (firstSubcategory.point.y + lastSubcategory.point.y) / 2 : fallbackCategoryY,
+      },
+    };
+    categoryNodes.push(categoryNode);
+    nodePoints.set(category.id, categoryNode.point);
+
+    currentSubcategoryNodes.forEach((subcategoryNode) => {
+      links.push({ source: categoryNode, target: subcategoryNode });
+    });
+
+    cursorY += CATEGORY_GAP;
   });
 
-  return { nodes, links, nodePoints };
+  if (categoryNodes.length > 0) {
+    root.point = {
+      x: ROOT_X,
+      y: (categoryNodes[0].point.y + categoryNodes[categoryNodes.length - 1].point.y) / 2,
+    };
+  }
+
+  nodePoints.set(data.id, root.point);
+  categoryNodes.forEach((categoryNode) => {
+    links.push({ source: root, target: categoryNode });
+  });
+
+  return {
+    nodes: [root, ...categoryNodes, ...subcategoryNodes, ...questionNodes],
+    links,
+    nodePoints,
+    width: BASE_WIDTH,
+    height: Math.max(MIN_HEIGHT, cursorY + PADDING_Y),
+  };
 }
 
 function showKicker(type) {
@@ -134,16 +128,32 @@ function showKicker(type) {
 }
 
 export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onSelectQuestion }) {
-  const [viewport, setViewport] = useState({
-    x: CENTER_X - CENTER_X * INITIAL_ZOOM,
-    y: CENTER_Y - CENTER_Y * INITIAL_ZOOM,
-    k: INITIAL_ZOOM,
-  });
+  const [viewport, setViewport] = useState({ x: 0, y: 0, k: 1 });
   const dragRef = useRef(null);
+  const initializedRef = useRef(false);
   const movedRef = useRef(false);
   const clickBlockedRef = useRef(false);
 
-  const { nodes, links, nodePoints } = useMemo(() => createRoadmapLayout(data), [data]);
+  const { nodes, links, nodePoints, width, height } = useMemo(() => createRoadmapLayout(data), [data]);
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    const categories = nodes.filter((node) => node.data.type === "category");
+    if (categories.length === 0) return;
+
+    const firstCategory = categories[0];
+    const lastCategory = categories[categories.length - 1];
+    const targetPoint = {
+      x: CATEGORY_X,
+      y: (firstCategory.point.y + lastCategory.point.y) / 2,
+    };
+    setViewport({
+      x: width / 2 - targetPoint.x * INITIAL_ZOOM,
+      y: height / 2 - targetPoint.y * INITIAL_ZOOM,
+      k: INITIAL_ZOOM,
+    });
+    initializedRef.current = true;
+  }, [height, nodes, width]);
 
   useEffect(() => {
     if (!focusTarget) return;
@@ -152,17 +162,17 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
 
     const nextK = clamp(focusTarget.zoom ?? 1, 0.35, 5);
     setViewport({
-      x: CENTER_X - point.x * nextK,
-      y: CENTER_Y - point.y * nextK,
+      x: width / 2 - point.x * nextK,
+      y: height / 2 - point.y * nextK,
       k: nextK,
     });
-  }, [focusTarget, nodePoints]);
+  }, [focusTarget, height, nodePoints, width]);
 
   function svgPoint(event) {
     const rect = event.currentTarget.getBoundingClientRect();
     return {
-      x: ((event.clientX - rect.left) / rect.width) * WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * HEIGHT,
+      x: ((event.clientX - rect.left) / rect.width) * width,
+      y: ((event.clientY - rect.top) / rect.height) * height,
       rect,
     };
   }
@@ -199,8 +209,8 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
-    const dx = ((event.clientX - drag.startX) / drag.rect.width) * WIDTH;
-    const dy = ((event.clientY - drag.startY) / drag.rect.height) * HEIGHT;
+    const dx = ((event.clientX - drag.startX) / drag.rect.width) * width;
+    const dy = ((event.clientY - drag.startY) / drag.rect.height) * height;
     if (Math.abs(dx) + Math.abs(dy) > 4) movedRef.current = true;
 
     setViewport((current) => ({
@@ -236,7 +246,7 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
   return (
     <div className="tree-stage">
       <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        viewBox={`0 0 ${width} ${height}`}
         role="img"
         aria-label="Interactive research roadmap"
         onWheel={handleWheel}
