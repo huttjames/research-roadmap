@@ -160,6 +160,10 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
     onSelectQuestion(question);
   }
 
+  function handleQuestionPointerDown(event) {
+    event.stopPropagation();
+  }
+
   return (
     <div className="tree-stage">
       <svg
@@ -214,6 +218,7 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
                     <div
                       className={`node-card node-card-${node.data.type}`}
                       onClick={isQuestion ? () => selectQuestion(node.data.question) : undefined}
+                      onPointerDown={isQuestion ? handleQuestionPointerDown : undefined}
                       onKeyDown={isQuestion ? handleQuestionKeyDown : undefined}
                       role={isQuestion ? "button" : undefined}
                       tabIndex={isQuestion ? "0" : undefined}
