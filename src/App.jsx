@@ -100,12 +100,12 @@ export default function App() {
                 x
               </button>
             </div>
-            <button className="navigator-root" type="button" onClick={() => focusNode("root", 2.05)}>
+            <button className="navigator-root" type="button" onClick={() => focusNode("root", 1.55)}>
               Full roadmap
             </button>
             {navigatorItems.map((category) => (
               <section key={category.id} className="navigator-group">
-                <button type="button" className="navigator-category" onClick={() => focusNode(category.id, 3.05)}>
+                <button type="button" className="navigator-category" onClick={() => focusNode(category.id, 2.05)}>
                   {category.name}
                 </button>
                 {category.subcategories.map((subcategory) => (
@@ -113,7 +113,7 @@ export default function App() {
                     type="button"
                     className="navigator-subcategory"
                     key={subcategory.id}
-                    onClick={() => focusNode(subcategory.id, 3.65)}
+                    onClick={() => focusNode(subcategory.id, 2.35)}
                   >
                     <span>{subcategory.name}</span>
                     <small>{subcategory.questions}</small>
