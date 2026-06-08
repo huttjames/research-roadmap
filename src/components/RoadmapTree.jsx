@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, tree } from "d3-hierarchy";
 
-const WIDTH = 1500;
-const HEIGHT = 980;
+const WIDTH = 2400;
+const HEIGHT = 1700;
 const CENTER_X = WIDTH / 2;
 const CENTER_Y = HEIGHT / 2;
+const INITIAL_ZOOM = 1.08;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -31,10 +32,10 @@ function nodeClass(node) {
 }
 
 function nodeBox(node) {
-  if (node.data.type === "root") return { width: 300, height: 96 };
-  if (node.data.type === "category") return { width: 280, height: 106 };
-  if (node.data.type === "subcategory") return { width: 210, height: 68 };
-  return { width: 324, height: 104 };
+  if (node.data.type === "root") return { width: 320, height: 104 };
+  if (node.data.type === "category") return { width: 360, height: 130 };
+  if (node.data.type === "subcategory") return { width: 260, height: 82 };
+  return { width: 390, height: 126 };
 }
 
 function nodeKicker(type) {
@@ -44,23 +45,49 @@ function nodeKicker(type) {
   return "Question";
 }
 
-export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion }) {
-  const [viewport, setViewport] = useState({ x: 0, y: 0, k: 1 });
+export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onSelectQuestion }) {
+  const [viewport, setViewport] = useState({
+    x: CENTER_X - CENTER_X * INITIAL_ZOOM,
+    y: CENTER_Y - CENTER_Y * INITIAL_ZOOM,
+    k: INITIAL_ZOOM,
+  });
   const dragRef = useRef(null);
   const movedRef = useRef(false);
   const clickBlockedRef = useRef(false);
 
-  const root = hierarchy(data);
-  const layout = tree()
-    .size([Math.PI * 2, Math.min(WIDTH, HEIGHT) / 2 - 92])
-    .separation((a, b) => {
-      if (a.parent === b.parent) return a.data.type === "question" ? 1.55 : 1.85;
-      return 2.35;
-    });
+  const { nodes, links, nodePoints } = useMemo(() => {
+    const root = hierarchy(data);
+    const layout = tree()
+      .size([Math.PI * 2, Math.min(WIDTH, HEIGHT) / 2 - 170])
+      .separation((a, b) => {
+        if (a.parent === b.parent) return a.data.type === "question" ? 2.6 : 2.9;
+        return 3.35;
+      });
+    const renderedRoot = layout(root);
+    const renderedNodes = renderedRoot.descendants();
+    const points = new Map(
+      renderedNodes.map((node) => [node.data.id, polarToCartesian(node.x, node.y)]),
+    );
 
-  const renderedRoot = layout(root);
-  const nodes = renderedRoot.descendants();
-  const links = renderedRoot.links();
+    return {
+      nodes: renderedNodes,
+      links: renderedRoot.links(),
+      nodePoints: points,
+    };
+  }, [data]);
+
+  useEffect(() => {
+    if (!focusTarget) return;
+    const point = nodePoints.get(focusTarget.id);
+    if (!point) return;
+
+    const nextK = clamp(focusTarget.zoom ?? 1, 0.45, 2.2);
+    setViewport({
+      x: CENTER_X - point.x * nextK,
+      y: CENTER_Y - point.y * nextK,
+      k: nextK,
+    });
+  }, [focusTarget, nodePoints]);
 
   function svgPoint(event) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -74,7 +101,7 @@ export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion
   function handleWheel(event) {
     event.preventDefault();
     const point = svgPoint(event);
-    const nextK = clamp(viewport.k * (event.deltaY > 0 ? 0.9 : 1.1), 0.55, 1.85);
+    const nextK = clamp(viewport.k * (event.deltaY > 0 ? 0.9 : 1.1), 0.45, 2.2);
     const worldX = (point.x - viewport.x) / viewport.k;
     const worldY = (point.y - viewport.y) / viewport.k;
 
@@ -107,11 +134,11 @@ export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion
     const dy = ((event.clientY - drag.startY) / drag.rect.height) * HEIGHT;
     if (Math.abs(dx) + Math.abs(dy) > 4) movedRef.current = true;
 
-    setViewport({
+    setViewport((current) => ({
       x: drag.originX + dx,
       y: drag.originY + dy,
-      k: viewport.k,
-    });
+      k: current.k,
+    }));
   }
 
   function handlePointerUp(event) {
