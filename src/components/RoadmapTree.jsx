@@ -1,9 +1,14 @@
+import { useRef, useState } from "react";
 import { hierarchy, tree } from "d3-hierarchy";
 
-const WIDTH = 1220;
-const HEIGHT = 820;
+const WIDTH = 1500;
+const HEIGHT = 980;
 const CENTER_X = WIDTH / 2;
 const CENTER_Y = HEIGHT / 2;
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
 
 function polarToCartesian(angle, radius) {
   const adjustedAngle = angle - Math.PI / 2;
@@ -25,117 +30,176 @@ function nodeClass(node) {
   return `roadmap-node roadmap-node-${node.data.type}`;
 }
 
-function labelFor(node) {
-  const name = node.data.name;
-  if (node.data.type !== "question" || name.length <= 96) return name;
-  return `${name.slice(0, 93)}...`;
+function nodeBox(node) {
+  if (node.data.type === "root") return { width: 300, height: 96 };
+  if (node.data.type === "category") return { width: 280, height: 106 };
+  if (node.data.type === "subcategory") return { width: 210, height: 68 };
+  return { width: 324, height: 104 };
 }
 
-function labelBox(node, point) {
-  if (node.data.type === "root") {
-    return {
-      x: point.x - 150,
-      y: point.y + 45,
-      width: 300,
-      height: 50,
-      side: "center",
-    };
-  }
-
-  const width = node.data.type === "question" ? 292 : node.data.type === "category" ? 210 : 164;
-  const height = node.data.type === "question" ? 54 : 38;
-  const side = point.x < CENTER_X ? "left" : "right";
-  const offset = node.data.type === "question" ? 22 : 17;
-
-  return {
-    x: side === "left" ? point.x - width - offset : point.x + offset,
-    y: point.y - height / 2,
-    width,
-    height,
-    side,
-  };
+function nodeKicker(type) {
+  if (type === "root") return "Roadmap";
+  if (type === "category") return "Major Category";
+  if (type === "subcategory") return "Subcategory";
+  return "Question";
 }
 
 export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion }) {
+  const [viewport, setViewport] = useState({ x: 0, y: 0, k: 1 });
+  const dragRef = useRef(null);
+  const movedRef = useRef(false);
+  const clickBlockedRef = useRef(false);
+
   const root = hierarchy(data);
   const layout = tree()
-    .size([Math.PI * 2, Math.min(WIDTH, HEIGHT) / 2 - 94])
+    .size([Math.PI * 2, Math.min(WIDTH, HEIGHT) / 2 - 92])
     .separation((a, b) => {
-      if (a.parent === b.parent) return a.data.type === "question" ? 1.2 : 1.5;
-      return 2;
+      if (a.parent === b.parent) return a.data.type === "question" ? 1.55 : 1.85;
+      return 2.35;
     });
 
   const renderedRoot = layout(root);
   const nodes = renderedRoot.descendants();
   const links = renderedRoot.links();
 
+  function svgPoint(event) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * WIDTH,
+      y: ((event.clientY - rect.top) / rect.height) * HEIGHT,
+      rect,
+    };
+  }
+
+  function handleWheel(event) {
+    event.preventDefault();
+    const point = svgPoint(event);
+    const nextK = clamp(viewport.k * (event.deltaY > 0 ? 0.9 : 1.1), 0.55, 1.85);
+    const worldX = (point.x - viewport.x) / viewport.k;
+    const worldY = (point.y - viewport.y) / viewport.k;
+
+    setViewport({
+      x: point.x - worldX * nextK,
+      y: point.y - worldY * nextK,
+      k: nextK,
+    });
+  }
+
+  function handlePointerDown(event) {
+    const point = svgPoint(event);
+    movedRef.current = false;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: viewport.x,
+      originY: viewport.y,
+      rect: point.rect,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const dx = ((event.clientX - drag.startX) / drag.rect.width) * WIDTH;
+    const dy = ((event.clientY - drag.startY) / drag.rect.height) * HEIGHT;
+    if (Math.abs(dx) + Math.abs(dy) > 4) movedRef.current = true;
+
+    setViewport({
+      x: drag.originX + dx,
+      y: drag.originY + dy,
+      k: viewport.k,
+    });
+  }
+
+  function handlePointerUp(event) {
+    if (movedRef.current) {
+      clickBlockedRef.current = true;
+      window.setTimeout(() => {
+        clickBlockedRef.current = false;
+      }, 0);
+    }
+
+    if (dragRef.current?.pointerId === event.pointerId) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      dragRef.current = null;
+    }
+  }
+
+  function selectQuestion(question) {
+    if (clickBlockedRef.current) return;
+    onSelectQuestion(question);
+  }
+
   return (
     <div className="tree-stage">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="Interactive research roadmap">
+      <svg
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        role="img"
+        aria-label="Interactive research roadmap"
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
         <defs>
           <filter id="nodeShadow" x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="6" stdDeviation="7" floodColor="#18212f" floodOpacity="0.18" />
+            <feDropShadow dx="0" dy="8" stdDeviation="10" floodColor="#18212f" floodOpacity="0.16" />
           </filter>
         </defs>
-        <g>
-          {links.map((link) => (
-            <path className="roadmap-link" d={linkPath(link)} key={`${link.source.data.id}-${link.target.data.id}`} />
-          ))}
-        </g>
 
-        <g>
-          {nodes.map((node) => {
-            const point = polarToCartesian(node.x, node.y);
-            const isQuestion = node.data.type === "question";
-            const isSelected = isQuestion && node.data.question.id === selectedQuestionId;
-            const selectQuestion = () => onSelectQuestion(node.data.question);
-            const label = labelBox(node, point);
-            const handleQuestionKeyDown = (event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                selectQuestion();
-              }
-            };
+        <g transform={`translate(${viewport.x},${viewport.y}) scale(${viewport.k})`}>
+          <g>
+            {links.map((link) => (
+              <path className="roadmap-link" d={linkPath(link)} key={`${link.source.data.id}-${link.target.data.id}`} />
+            ))}
+          </g>
 
-            return (
-              <g
-                className={`${nodeClass(node)} ${isSelected ? "is-selected" : ""}`}
-                key={node.data.id}
-                transform={`translate(${point.x},${point.y})`}
-              >
-                {isQuestion ? (
-                  <circle
-                    className="node-hitbox"
-                    r="18"
-                    onClick={selectQuestion}
-                    onKeyDown={handleQuestionKeyDown}
-                    role="button"
-                    tabIndex="0"
-                    aria-label={`Open question: ${node.data.name}`}
-                  />
-                ) : null}
-                <circle r={node.data.type === "root" ? 36 : node.data.type === "category" ? 18 : node.data.type === "subcategory" ? 11 : 7} />
-                <foreignObject
-                  className={`node-label-wrap node-label-wrap-${label.side}`}
-                  x={label.x - point.x}
-                  y={label.y - point.y}
-                  width={label.width}
-                  height={label.height}
+          <g>
+            {nodes.map((node) => {
+              const point = polarToCartesian(node.x, node.y);
+              const box = nodeBox(node);
+              const isQuestion = node.data.type === "question";
+              const isSelected = isQuestion && node.data.question.id === selectedQuestionId;
+              const handleQuestionKeyDown = (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  selectQuestion(node.data.question);
+                }
+              };
+
+              return (
+                <g
+                  className={`${nodeClass(node)} ${isSelected ? "is-selected" : ""}`}
+                  key={node.data.id}
+                  transform={`translate(${point.x},${point.y})`}
                 >
-                  <div
-                    className={`node-label node-label-${node.data.type}`}
-                    onClick={isQuestion ? selectQuestion : undefined}
-                    onKeyDown={isQuestion ? handleQuestionKeyDown : undefined}
-                    role={isQuestion ? "button" : undefined}
-                    tabIndex={isQuestion ? "0" : undefined}
-                    title={node.data.name}
+                  <foreignObject
+                    className="node-card-wrap"
+                    x={box.width / -2}
+                    y={box.height / -2}
+                    width={box.width}
+                    height={box.height}
                   >
-                    {labelFor(node)}
-                  </div>
-                </foreignObject>
-              </g>
-            );
-          })}
+                    <div
+                      className={`node-card node-card-${node.data.type}`}
+                      onClick={isQuestion ? () => selectQuestion(node.data.question) : undefined}
+                      onKeyDown={isQuestion ? handleQuestionKeyDown : undefined}
+                      role={isQuestion ? "button" : undefined}
+                      tabIndex={isQuestion ? "0" : undefined}
+                      title={node.data.name}
+                    >
+                      <span className="node-card-kicker">{nodeKicker(node.data.type)}</span>
+                      <span className="node-card-title">{node.data.name}</span>
+                    </div>
+                  </foreignObject>
+                </g>
+              );
+            })}
+          </g>
         </g>
       </svg>
     </div>
