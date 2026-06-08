@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { hierarchy, tree } from "d3-hierarchy";
 
-const WIDTH = 2400;
-const HEIGHT = 1700;
+const WIDTH = 9000;
+const HEIGHT = 7000;
 const CENTER_X = WIDTH / 2;
 const CENTER_Y = HEIGHT / 2;
-const INITIAL_ZOOM = 1.08;
+const INITIAL_ZOOM = 2.05;
+const CATEGORY_RADIUS = 1050;
+const SUBCATEGORY_RADIUS = 1900;
+const QUESTION_RADIUS = 3000;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -20,9 +22,12 @@ function polarToCartesian(angle, radius) {
 }
 
 function linkPath(link) {
-  const source = polarToCartesian(link.source.x, link.source.y);
-  const target = polarToCartesian(link.target.x, link.target.y);
-  const middle = polarToCartesian(link.target.x, (link.source.y + link.target.y) / 2);
+  const source = link.source.point;
+  const target = link.target.point;
+  const middle = {
+    x: (source.x + target.x) / 2,
+    y: (source.y + target.y) / 2,
+  };
 
   return `M${source.x},${source.y} Q${middle.x},${middle.y} ${target.x},${target.y}`;
 }
@@ -32,17 +37,100 @@ function nodeClass(node) {
 }
 
 function nodeBox(node) {
-  if (node.data.type === "root") return { width: 320, height: 104 };
-  if (node.data.type === "category") return { width: 360, height: 130 };
-  if (node.data.type === "subcategory") return { width: 260, height: 82 };
-  return { width: 390, height: 126 };
+  if (node.data.type === "root") return { width: 360, height: 118 };
+  if (node.data.type === "category") return { width: 620, height: 220 };
+  if (node.data.type === "subcategory") return { width: 420, height: 140 };
+  return { width: 520, height: 176 };
 }
 
-function nodeKicker(type) {
-  if (type === "root") return "Roadmap";
-  if (type === "category") return "Major Category";
-  if (type === "subcategory") return "Subcategory";
-  return "Question";
+function countLeaves(node) {
+  if (!node.children?.length) return node.type === "question" ? 1 : 0;
+  return node.children.reduce((sum, child) => sum + countLeaves(child), 0);
+}
+
+function createRoadmapLayout(data) {
+  const root = {
+    data,
+    point: { x: CENTER_X, y: CENTER_Y },
+  };
+  const nodes = [root];
+  const links = [];
+  const nodePoints = new Map([[data.id, root.point]]);
+  const categories = data.children || [];
+  const categoryWeights = categories.map((category) =>
+    Math.max(
+      4,
+      (category.children || []).reduce((sum, subcategory) => sum + Math.max(2.4, countLeaves(subcategory)), 0),
+    ),
+  );
+  const totalWeight = categoryWeights.reduce((sum, weight) => sum + weight, 0) || 1;
+  let angleCursor = 0;
+
+  categories.forEach((category, categoryIndex) => {
+    const categorySpan = (Math.PI * 2 * categoryWeights[categoryIndex]) / totalWeight;
+    const categoryStart = angleCursor;
+    const categoryEnd = angleCursor + categorySpan;
+    const categoryAngle = (categoryStart + categoryEnd) / 2;
+    const categoryNode = {
+      data: category,
+      point: polarToCartesian(categoryAngle, CATEGORY_RADIUS),
+    };
+    nodes.push(categoryNode);
+    links.push({ source: root, target: categoryNode });
+    nodePoints.set(category.id, categoryNode.point);
+
+    const subcategories = category.children || [];
+    const subcategoryWeights = subcategories.map((subcategory) => Math.max(2.4, countLeaves(subcategory)));
+    const subcategoryTotal = subcategoryWeights.reduce((sum, weight) => sum + weight, 0) || 1;
+    const categoryPadding = Math.min(0.12, categorySpan * 0.08);
+    let subcategoryCursor = categoryStart + categoryPadding;
+    const availableSpan = Math.max(0.1, categorySpan - categoryPadding * 2);
+
+    subcategories.forEach((subcategory, subcategoryIndex) => {
+      const subcategorySpan = (availableSpan * subcategoryWeights[subcategoryIndex]) / subcategoryTotal;
+      const subcategoryStart = subcategoryCursor;
+      const subcategoryEnd = subcategoryCursor + subcategorySpan;
+      const subcategoryAngle = (subcategoryStart + subcategoryEnd) / 2;
+      const subcategoryNode = {
+        data: subcategory,
+        point: polarToCartesian(subcategoryAngle, SUBCATEGORY_RADIUS),
+      };
+      nodes.push(subcategoryNode);
+      links.push({ source: categoryNode, target: subcategoryNode });
+      nodePoints.set(subcategory.id, subcategoryNode.point);
+
+      const questions = subcategory.children || [];
+      const questionPadding = Math.min(0.08, subcategorySpan * 0.16);
+      const questionStart = subcategoryStart + questionPadding;
+      const questionEnd = subcategoryEnd - questionPadding;
+      const questionSpan = Math.max(0, questionEnd - questionStart);
+
+      questions.forEach((question, questionIndex) => {
+        const questionAngle =
+          questions.length === 1
+            ? subcategoryAngle
+            : questionStart + (questionSpan * questionIndex) / (questions.length - 1);
+        const questionRadius = QUESTION_RADIUS + (questionIndex % 2) * 240;
+        const questionNode = {
+          data: question,
+          point: polarToCartesian(questionAngle, questionRadius),
+        };
+        nodes.push(questionNode);
+        links.push({ source: subcategoryNode, target: questionNode });
+        nodePoints.set(question.id, questionNode.point);
+      });
+
+      subcategoryCursor += subcategorySpan;
+    });
+
+    angleCursor = categoryEnd;
+  });
+
+  return { nodes, links, nodePoints };
+}
+
+function showKicker(type) {
+  return type === "question";
 }
 
 export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onSelectQuestion }) {
@@ -55,33 +143,14 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
   const movedRef = useRef(false);
   const clickBlockedRef = useRef(false);
 
-  const { nodes, links, nodePoints } = useMemo(() => {
-    const root = hierarchy(data);
-    const layout = tree()
-      .size([Math.PI * 2, Math.min(WIDTH, HEIGHT) / 2 - 170])
-      .separation((a, b) => {
-        if (a.parent === b.parent) return a.data.type === "question" ? 2.6 : 2.9;
-        return 3.35;
-      });
-    const renderedRoot = layout(root);
-    const renderedNodes = renderedRoot.descendants();
-    const points = new Map(
-      renderedNodes.map((node) => [node.data.id, polarToCartesian(node.x, node.y)]),
-    );
-
-    return {
-      nodes: renderedNodes,
-      links: renderedRoot.links(),
-      nodePoints: points,
-    };
-  }, [data]);
+  const { nodes, links, nodePoints } = useMemo(() => createRoadmapLayout(data), [data]);
 
   useEffect(() => {
     if (!focusTarget) return;
     const point = nodePoints.get(focusTarget.id);
     if (!point) return;
 
-    const nextK = clamp(focusTarget.zoom ?? 1, 0.45, 2.2);
+    const nextK = clamp(focusTarget.zoom ?? 1, 0.35, 5);
     setViewport({
       x: CENTER_X - point.x * nextK,
       y: CENTER_Y - point.y * nextK,
@@ -101,7 +170,7 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
   function handleWheel(event) {
     event.preventDefault();
     const point = svgPoint(event);
-    const nextK = clamp(viewport.k * (event.deltaY > 0 ? 0.9 : 1.1), 0.45, 2.2);
+    const nextK = clamp(viewport.k * (event.deltaY > 0 ? 0.9 : 1.1), 0.35, 5);
     const worldX = (point.x - viewport.x) / viewport.k;
     const worldY = (point.y - viewport.y) / viewport.k;
 
@@ -191,7 +260,7 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
 
           <g>
             {nodes.map((node) => {
-              const point = polarToCartesian(node.x, node.y);
+              const point = node.point;
               const box = nodeBox(node);
               const isQuestion = node.data.type === "question";
               const isSelected = isQuestion && node.data.question.id === selectedQuestionId;
@@ -224,7 +293,7 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
                       tabIndex={isQuestion ? "0" : undefined}
                       title={node.data.name}
                     >
-                      <span className="node-card-kicker">{nodeKicker(node.data.type)}</span>
+                      {showKicker(node.data.type) && <span className="node-card-kicker">Question</span>}
                       <span className="node-card-title">{node.data.name}</span>
                     </div>
                   </foreignObject>
