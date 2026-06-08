@@ -2,17 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import RoadmapTree from "./components/RoadmapTree.jsx";
 import DetailPanel from "./components/DetailPanel.jsx";
 import { buildRoadmapTree, getRoadmapStats } from "./data/treeBuilder.js";
-import { parseCsvText, parseWorkbookFromFile } from "./data/parseWorkbook.js";
+import { parseCsvText } from "./data/parseWorkbook.js";
 
 const PUBLISHED_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSqLA1y00VMLkhP8oWfYT9WqQp9GqlFCOKXUYnkD051OEq9rLXWWXBvSJe8XeZsUqYR9vhTMZU9VtsR/pub?gid=0&single=true&output=csv";
 
 export default function App() {
   const [questions, setQuestions] = useState([]);
-  const [sourceName, setSourceName] = useState("Published Google Sheet CSV");
   const [selectedQuestion, setSelectedQuestion] = useState(null);
   const [status, setStatus] = useState("Loading published CSV...");
   const [error, setError] = useState("");
+  const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const [focusTarget, setFocusTarget] = useState(null);
 
   useEffect(() => {
     async function loadPublishedCsv() {
@@ -25,7 +26,7 @@ export default function App() {
         const csvText = await response.text();
         const parsed = parseCsvText(csvText, "Published Google Sheet CSV");
         setQuestions(parsed.questions);
-        setStatus(`Loaded ${parsed.questions.length} questions from the published sheet.`);
+        setStatus("");
       } catch (loadError) {
         setError(loadError.message);
         setStatus("");
@@ -37,6 +38,19 @@ export default function App() {
 
   const treeData = useMemo(() => buildRoadmapTree(questions), [questions]);
   const stats = useMemo(() => getRoadmapStats(questions), [questions]);
+  const navigatorItems = useMemo(
+    () =>
+      treeData.children.map((category) => ({
+        id: category.id,
+        name: category.name,
+        subcategories: category.children.map((subcategory) => ({
+          id: subcategory.id,
+          name: subcategory.name,
+          questions: subcategory.children.length,
+        })),
+      })),
+    [treeData],
+  );
   const warnings = useMemo(() => {
     const messages = [];
     if (questions.length > 0 && stats.categories !== 5) {
@@ -45,23 +59,9 @@ export default function App() {
     return messages;
   }, [questions.length, stats.categories]);
 
-  async function handleUpload(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setError("");
-    setStatus(`Parsing ${file.name}...`);
-    setSelectedQuestion(null);
-
-    try {
-      const parsed = await parseWorkbookFromFile(file);
-      setQuestions(parsed.questions);
-      setSourceName(file.name);
-      setStatus(`Loaded ${parsed.questions.length} questions from ${parsed.sheetName}.`);
-    } catch (uploadError) {
-      setError(uploadError.message);
-      setStatus("");
-    }
+  function focusNode(id, zoom = 1.05) {
+    setNavigatorOpen(false);
+    setFocusTarget({ id, zoom, key: Date.now() });
   }
 
   return (
@@ -72,25 +72,57 @@ export default function App() {
             <p className="eyebrow">IfDT Research Roadmap</p>
             <h1>Interactive research question map</h1>
           </div>
-
-          <label className="upload-control">
-            <span>Upload data</span>
-            <input accept=".csv,.xlsx,.xls" type="file" onChange={handleUpload} />
-          </label>
         </header>
 
-        <div className="status-strip">
-          <div>
-            <strong>{sourceName}</strong>
+        <div className="roadmap-toolbar">
+          <div className="stats" aria-label="Roadmap counts">
+            <button type="button" onClick={() => setNavigatorOpen((open) => !open)}>
+              {stats.categories} categories
+            </button>
+            <button type="button" onClick={() => setNavigatorOpen((open) => !open)}>
+              {stats.subcategories} subcategories
+            </button>
+            <button type="button" onClick={() => setNavigatorOpen((open) => !open)}>
+              {stats.questions} questions
+            </button>
+          </div>
+          <div className="load-state">
             {status && <span>{status}</span>}
             {error && <span className="error-text">{error}</span>}
           </div>
-          <div className="stats" aria-label="Roadmap counts">
-            <span>{stats.categories} categories</span>
-            <span>{stats.subcategories} subcategories</span>
-            <span>{stats.questions} questions</span>
-          </div>
         </div>
+
+        {navigatorOpen && (
+          <nav className="map-navigator" aria-label="Roadmap navigator">
+            <div className="map-navigator-header">
+              <strong>Jump To</strong>
+              <button type="button" onClick={() => setNavigatorOpen(false)} aria-label="Close navigator">
+                x
+              </button>
+            </div>
+            <button className="navigator-root" type="button" onClick={() => focusNode("root", 0.62)}>
+              Full roadmap
+            </button>
+            {navigatorItems.map((category) => (
+              <section key={category.id} className="navigator-group">
+                <button type="button" className="navigator-category" onClick={() => focusNode(category.id, 1.16)}>
+                  {category.name}
+                </button>
+                {category.subcategories.map((subcategory) => (
+                  <button
+                    type="button"
+                    className="navigator-subcategory"
+                    key={subcategory.id}
+                    onClick={() => focusNode(subcategory.id, 1.38)}
+                  >
+                    <span>{subcategory.name}</span>
+                    <small>{subcategory.questions}</small>
+                  </button>
+                ))}
+              </section>
+            ))}
+          </nav>
+        )}
 
         {warnings.length > 0 && (
           <div className="warning-strip" role="status">
@@ -102,6 +134,7 @@ export default function App() {
 
         <RoadmapTree
           data={treeData}
+          focusTarget={focusTarget}
           selectedQuestionId={selectedQuestion?.id}
           onSelectQuestion={setSelectedQuestion}
         />
