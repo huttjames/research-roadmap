@@ -1,7 +1,7 @@
 import { hierarchy, tree } from "d3-hierarchy";
 
-const WIDTH = 1100;
-const HEIGHT = 760;
+const WIDTH = 1220;
+const HEIGHT = 820;
 const CENTER_X = WIDTH / 2;
 const CENTER_Y = HEIGHT / 2;
 
@@ -25,23 +25,35 @@ function nodeClass(node) {
   return `roadmap-node roadmap-node-${node.data.type}`;
 }
 
-function labelAnchor(node) {
-  if (node.data.type === "root") return "middle";
-  const angle = node.x;
-  return angle > Math.PI ? "end" : "start";
-}
-
-function labelTransform(node) {
-  const angle = (node.x * 180) / Math.PI - 90;
-  const rotate = node.x > Math.PI ? angle + 180 : angle;
-  const offset = node.data.type === "question" ? 15 : 13;
-  return `rotate(${rotate}) translate(${offset},4)`;
-}
-
 function labelFor(node) {
   const name = node.data.name;
-  if (node.data.type !== "question" || name.length <= 70) return name;
-  return `${name.slice(0, 67)}...`;
+  if (node.data.type !== "question" || name.length <= 96) return name;
+  return `${name.slice(0, 93)}...`;
+}
+
+function labelBox(node, point) {
+  if (node.data.type === "root") {
+    return {
+      x: point.x - 150,
+      y: point.y + 45,
+      width: 300,
+      height: 50,
+      side: "center",
+    };
+  }
+
+  const width = node.data.type === "question" ? 292 : node.data.type === "category" ? 210 : 164;
+  const height = node.data.type === "question" ? 54 : 38;
+  const side = point.x < CENTER_X ? "left" : "right";
+  const offset = node.data.type === "question" ? 22 : 17;
+
+  return {
+    x: side === "left" ? point.x - width - offset : point.x + offset,
+    y: point.y - height / 2,
+    width,
+    height,
+    side,
+  };
 }
 
 export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion }) {
@@ -60,6 +72,11 @@ export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion
   return (
     <div className="tree-stage">
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-label="Interactive research roadmap">
+        <defs>
+          <filter id="nodeShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="6" stdDeviation="7" floodColor="#18212f" floodOpacity="0.18" />
+          </filter>
+        </defs>
         <g>
           {links.map((link) => (
             <path className="roadmap-link" d={linkPath(link)} key={`${link.source.data.id}-${link.target.data.id}`} />
@@ -72,6 +89,7 @@ export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion
             const isQuestion = node.data.type === "question";
             const isSelected = isQuestion && node.data.question.id === selectedQuestionId;
             const selectQuestion = () => onSelectQuestion(node.data.question);
+            const label = labelBox(node, point);
             const handleQuestionKeyDown = (event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
@@ -97,16 +115,24 @@ export default function RoadmapTree({ data, selectedQuestionId, onSelectQuestion
                   />
                 ) : null}
                 <circle r={node.data.type === "root" ? 36 : node.data.type === "category" ? 18 : node.data.type === "subcategory" ? 11 : 7} />
-                <text
-                  textAnchor={labelAnchor(node)}
-                  transform={node.data.type === "root" ? "translate(0,62)" : labelTransform(node)}
-                  onClick={isQuestion ? selectQuestion : undefined}
-                  onKeyDown={isQuestion ? handleQuestionKeyDown : undefined}
-                  role={isQuestion ? "button" : undefined}
-                  tabIndex={isQuestion ? "0" : undefined}
+                <foreignObject
+                  className={`node-label-wrap node-label-wrap-${label.side}`}
+                  x={label.x - point.x}
+                  y={label.y - point.y}
+                  width={label.width}
+                  height={label.height}
                 >
-                  {labelFor(node)}
-                </text>
+                  <div
+                    className={`node-label node-label-${node.data.type}`}
+                    onClick={isQuestion ? selectQuestion : undefined}
+                    onKeyDown={isQuestion ? handleQuestionKeyDown : undefined}
+                    role={isQuestion ? "button" : undefined}
+                    tabIndex={isQuestion ? "0" : undefined}
+                    title={node.data.name}
+                  >
+                    {labelFor(node)}
+                  </div>
+                </foreignObject>
               </g>
             );
           })}
