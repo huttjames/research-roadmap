@@ -135,6 +135,13 @@ function showKicker(type) {
   return type === "question";
 }
 
+function nodeZoom(type) {
+  if (type === "root") return 1.05;
+  if (type === "category") return 1.35;
+  if (type === "subcategory") return 1.65;
+  return 1.9;
+}
+
 export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onSelectQuestion }) {
   const [viewport, setViewport] = useState({ x: 0, y: 0, k: 1 });
   const dragRef = useRef(null);
@@ -247,7 +254,26 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
     onSelectQuestion(question);
   }
 
-  function handleQuestionPointerDown(event) {
+  function centerNode(node) {
+    if (clickBlockedRef.current) return;
+    const nextK = nodeZoom(node.data.type);
+    setViewport({
+      x: width / 2 - node.point.x * nextK,
+      y: height / 2 - node.point.y * nextK,
+      k: nextK,
+    });
+  }
+
+  function activateNode(node) {
+    if (node.data.type === "question") {
+      selectQuestion(node.data.question);
+      return;
+    }
+
+    centerNode(node);
+  }
+
+  function handleNodePointerDown(event) {
     event.stopPropagation();
   }
 
@@ -293,11 +319,12 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
               const point = node.point;
               const box = nodeBox(node);
               const isQuestion = node.data.type === "question";
+              const isInteractive = node.data.type !== "root" || nodes.length > 1;
               const isSelected = isQuestion && node.data.question.id === selectedQuestionId;
-              const handleQuestionKeyDown = (event) => {
+              const handleNodeKeyDown = (event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  selectQuestion(node.data.question);
+                  activateNode(node);
                 }
               };
 
@@ -316,11 +343,11 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
                   >
                     <div
                       className={`node-card node-card-${node.data.type}`}
-                      onClick={isQuestion ? () => selectQuestion(node.data.question) : undefined}
-                      onPointerDown={isQuestion ? handleQuestionPointerDown : undefined}
-                      onKeyDown={isQuestion ? handleQuestionKeyDown : undefined}
-                      role={isQuestion ? "button" : undefined}
-                      tabIndex={isQuestion ? "0" : undefined}
+                      onClick={isInteractive ? () => activateNode(node) : undefined}
+                      onPointerDown={isInteractive ? handleNodePointerDown : undefined}
+                      onKeyDown={isInteractive ? handleNodeKeyDown : undefined}
+                      role={isInteractive ? "button" : undefined}
+                      tabIndex={isInteractive ? "0" : undefined}
                       title={node.data.name}
                     >
                       {showKicker(node.data.type) && <span className="node-card-kicker">Question</span>}
