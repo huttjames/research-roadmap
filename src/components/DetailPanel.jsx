@@ -29,7 +29,11 @@ export default function DetailPanel({ question, onClose }) {
   if (!question) {
     return (
       <aside className="detail-panel detail-panel-empty" aria-label="Question details">
-        <p>Select a question leaf to view the research brief.</p>
+        <p className="detail-kicker">Research Brief</p>
+        <h2>Question details</h2>
+        <div className="detail-empty-card">
+          <p>No question selected.</p>
+        </div>
       </aside>
     );
   }
