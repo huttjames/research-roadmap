@@ -270,6 +270,18 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
         </defs>
 
         <g transform={`translate(${viewport.x},${viewport.y}) scale(${viewport.k})`}>
+          <g className="roadmap-column-labels" aria-hidden="true">
+            <text className="roadmap-column-label" x={CATEGORY_X} y="42">
+              Categories
+            </text>
+            <text className="roadmap-column-label" x={SUBCATEGORY_X} y="42">
+              Subcategories
+            </text>
+            <text className="roadmap-column-label" x={QUESTION_X} y="42">
+              Questions
+            </text>
+          </g>
+
           <g>
             {links.map((link) => (
               <path className="roadmap-link" d={linkPath(link)} key={`${link.source.data.id}-${link.target.data.id}`} />
