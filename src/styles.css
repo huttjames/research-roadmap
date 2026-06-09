@@ -283,6 +283,15 @@ h1 {
   stroke-linecap: round;
 }
 
+.roadmap-column-label {
+  fill: rgba(24, 33, 47, 0.64);
+  font-size: 1.65rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-anchor: middle;
+  text-transform: uppercase;
+}
+
 .node-card-wrap {
   overflow: visible;
 }
@@ -416,11 +425,21 @@ h1 {
 }
 
 .detail-panel-empty {
-  display: flex;
-  align-items: center;
   color: var(--muted);
   font-size: 1rem;
   line-height: 1.5;
+}
+
+.detail-empty-card {
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid rgba(24, 33, 47, 0.11);
+  border-radius: 8px;
+  background: #fbfaf6;
+}
+
+.detail-empty-card p {
+  margin: 0;
 }
 
 .close-button {
