@@ -312,6 +312,10 @@ h1 {
   filter: url("#nodeShadow");
 }
 
+.node-card[role="button"] {
+  cursor: pointer;
+}
+
 .node-card-kicker {
   display: block;
   margin-bottom: 7px;
@@ -404,6 +408,10 @@ h1 {
   background: #fff7f4;
 }
 
+.node-card-category:hover,
+.node-card-category:focus,
+.node-card-subcategory:hover,
+.node-card-subcategory:focus,
 .node-card-question:hover,
 .node-card-question:focus {
   outline: 2px solid rgba(47, 111, 237, 0.32);
