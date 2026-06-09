@@ -1,24 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const BASE_WIDTH = 3900;
-const MIN_HEIGHT = 2400;
-const ROOT_X = 260;
-const CATEGORY_X = 900;
-const SUBCATEGORY_X = 1720;
-const QUESTION_X = 2920;
-const PADDING_Y = 220;
-const CATEGORY_GAP = 280;
-const SUBCATEGORY_GAP = 150;
-const QUESTION_GAP = 260;
-const INITIAL_ZOOM = 1.8;
+const BASE_WIDTH = 3000;
+const MIN_HEIGHT = 1700;
+const ROOT_X = 220;
+const CATEGORY_X = 700;
+const SUBCATEGORY_X = 1350;
+const QUESTION_X = 2250;
+const PADDING_Y = 145;
+const CATEGORY_GAP = 180;
+const SUBCATEGORY_GAP = 95;
+const QUESTION_GAP = 165;
+const INITIAL_ZOOM = 1.0;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
 function linkPath(link) {
-  const source = link.source.point;
-  const target = link.target.point;
+  const sourceBox = nodeBox(link.source);
+  const targetBox = nodeBox(link.target);
+  const source = {
+    x: link.source.point.x + sourceBox.width / 2,
+    y: link.source.point.y,
+  };
+  const target = {
+    x: link.target.point.x - targetBox.width / 2,
+    y: link.target.point.y,
+  };
   const elbowX = source.x + (target.x - source.x) * 0.54;
 
   return `M${source.x},${source.y} H${elbowX} V${target.y} H${target.x}`;
@@ -29,10 +37,10 @@ function nodeClass(node) {
 }
 
 function nodeBox(node) {
-  if (node.data.type === "root") return { width: 390, height: 132 };
-  if (node.data.type === "category") return { width: 700, height: 250 };
-  if (node.data.type === "subcategory") return { width: 520, height: 170 };
-  return { width: 620, height: 190 };
+  if (node.data.type === "root") return { width: 340, height: 108 };
+  if (node.data.type === "category") return { width: 560, height: 155 };
+  if (node.data.type === "subcategory") return { width: 430, height: 112 };
+  return { width: 720, height: 148 };
 }
 
 function createRoadmapLayout(data) {
@@ -148,7 +156,7 @@ export default function RoadmapTree({ data, focusTarget, selectedQuestionId, onS
       y: (firstCategory.point.y + lastCategory.point.y) / 2,
     };
     setViewport({
-      x: width / 2 - targetPoint.x * INITIAL_ZOOM,
+      x: width / 2 - SUBCATEGORY_X * INITIAL_ZOOM,
       y: height / 2 - targetPoint.y * INITIAL_ZOOM,
       k: INITIAL_ZOOM,
     });
